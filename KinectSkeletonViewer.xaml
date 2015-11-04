@@ -7,7 +7,10 @@
              mc:Ignorable="d" 
              d:DesignHeight="480" d:DesignWidth="640"
              Loaded="KinectSkeletonViewer_OnLoaded">
-    <!-- SkeletonCanvases will be added as children of SkeletonCanvasPanel -->    
-    <Grid Name="SkeletonCanvasPanel">        
+    <!-- SkeletonCanvases will be added as children of SkeletonCanvasPanel -->
+    <Grid Name="SkeletonCanvasPanel">
+        <Button x:Name="buttonAction1" Content="Action 1" Margin="542,379,0,0" VerticalAlignment="Top" Click="ButtonAction_Clicked" Height="27" HorizontalAlignment="Left" Width="88" Opacity="0.6"/>
+        <Button x:Name="buttonAction2" Content="Action 2" HorizontalAlignment="Left" Margin="542,411,0,0" VerticalAlignment="Top" Width="88" Click="ButtonAction_Clicked" Height="27" Opacity="0.6"/>
+        <Button x:Name="buttonAction3" Content="Action 3" HorizontalAlignment="Left" Margin="542,443,0,0" VerticalAlignment="Top" Width="88" Click="ButtonAction_Clicked" Height="27" Opacity="0.6"/>
     </Grid>
 </kv:KinectViewer>

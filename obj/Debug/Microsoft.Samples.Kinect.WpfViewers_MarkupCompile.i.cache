@@ -16,5 +16,5 @@ DEBUG;TRACE
 14-114476531
 KinectAudioViewer.xaml;KinectDepthViewer.xaml;KinectColorViewer.xaml;KinectSettings.xaml;KinectSkeletonViewer.xaml;KinectVoiceCommandViewer.xaml;
 
-False
+True
 

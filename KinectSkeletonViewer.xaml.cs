@@ -7,10 +7,16 @@
 namespace Microsoft.Samples.Kinect.WpfViewers
 {
     using System;
+    using System.Collections;
     using System.Collections.Generic;
     using System.Windows;
     using System.Windows.Data;
+    using System.Runtime.InteropServices;
+    using Microsoft.Win32.SafeHandles;
     using Microsoft.Kinect;
+    using System.Linq;
+    using DTWGestureRecognition;
+    using System.Windows.Controls;
 
     public enum ImageType
     {
@@ -69,6 +75,8 @@ namespace Microsoft.Samples.Kinect.WpfViewers
             this.ShowJoints = true;
             this.ShowBones = true;
             this.ShowCenter = true;
+            ConsoleManager.AllocConsole();
+            Console.WriteLine("KinectSkeletonViewer initialized for " + ImageType);
         }
 
         public bool ShowBones
@@ -100,11 +108,18 @@ namespace Microsoft.Samples.Kinect.WpfViewers
             if (null != args.OldValue)
             {
                 args.OldValue.AllFramesReady -= this.KinectAllFramesReady;
+                args.OldValue.SkeletonFrameReady -= SkeletonExtractSkeletonFrameReady;
             }
 
             if ((null != args.NewValue) && (KinectStatus.Connected == args.NewValue.Status))
             {
                 args.NewValue.AllFramesReady += this.KinectAllFramesReady;
+                if(ImageType.Color == ImageType)
+                {
+                    args.NewValue.SkeletonFrameReady -= SkeletonExtractSkeletonFrameReady;
+                    args.NewValue.SkeletonFrameReady += SkeletonExtractSkeletonFrameReady;
+                    prepareSkeletonExtract(args.NewValue);
+                }
             }
         }
 
@@ -352,6 +367,152 @@ namespace Microsoft.Samples.Kinect.WpfViewers
                 this.jointMappings.Add(new Dictionary<JointType, JointMapping>());
                 this.SkeletonCanvasPanel.Children.Add(skeletonCanvas);
             }
+
+            if(ImageType.Depth == ImageType)
+            {
+                buttonAction1.Visibility = Visibility.Collapsed;
+                buttonAction2.Visibility = Visibility.Collapsed;
+                buttonAction3.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        #region Vriables and Handlers for recording skeleton samples or recognition
+        private static Skeleton[] _FrameSkeletons;
+        private ArrayList _video;
+        private const int MinimumFrames = 6;
+        private const int BufferSize = 32;
+        private const int Ignore = 2;
+        private bool _capturing;
+        private DtwGestureRecognizer _dtw;
+        private int _flipFlop = 0;
+
+        private void prepareSkeletonExtract(KinectSensor sensor)
+        {
+            _dtw = new DtwGestureRecognizer(12, 0.6, 2, 2, 10);
+            _video = new ArrayList();
+            _FrameSkeletons = new Skeleton[sensor.SkeletonStream.FrameSkeletonArrayLength];
+            Skeleton2DDataExtract.Skeleton2DdataCoordReady -= Skeleton2DdataCoordReady;
+            Skeleton2DDataExtract.Skeleton2DdataCoordReady += Skeleton2DdataCoordReady;
+            Console.WriteLine("Kinect ready for Skeleton extract");
+        }
+ 
+        // Handler to extra skeleton for recognition or recording sample
+        private static void SkeletonExtractSkeletonFrameReady(object sender, SkeletonFrameReadyEventArgs e)
+        {
+            using (SkeletonFrame skeletonFrame = e.OpenSkeletonFrame())
+            {
+                if (skeletonFrame != null)
+                {
+                    skeletonFrame.CopySkeletonDataTo(_FrameSkeletons);
+                    Skeleton data = (from s in _FrameSkeletons
+                                     where s.TrackingState == SkeletonTrackingState.Tracked
+                                     select s).FirstOrDefault();
+                    Skeleton2DDataExtract.ProcessData(data);
+                }
+            }
+        }
+
+        private void Skeleton2DdataCoordReady(object sender, Skeleton2DdataCoordEventArgs a)
+        {
+            int currentFrameCount = _video.Count;
+            // We need a sensible number of frames before we start attempting to match gestures against remembered sequences
+            if (_video.Count > MinimumFrames && _capturing == false)
+            {
+                ////Debug.WriteLine("Reading and video.Count=" + video.Count);
+                string s = _dtw.Recognize(_video);
+                Console.WriteLine("Recognised as: " + s);
+                if (!s.Contains("__UNKNOWN"))
+                {
+                    // There was no match so reset the buffer
+                    _video = new ArrayList();
+                }
+            }
+            // Ensures that we remember only the last x frames
+            if (_video.Count > BufferSize)
+            {
+                // If we are currently capturing and we reach the maximum buffer size then automatically store
+                if (_capturing)
+                {
+                   // TODO stop capturing and save the sample
+                   // DtwStoreClick(null, null);
+                }
+                else
+                {
+                    // Remove the first frame in the buffer
+                    _video.RemoveAt(0);
+                }
+            }
+            // Decide which skeleton frames to capture. Only do so if the frames actually returned a number. 
+            // For some reason my Kinect/PC setup didn't always return a double in range (i.e. infinity) even when standing completely within the frame.
+            // TODO Weird. Need to investigate this
+            if (!double.IsNaN(a.GetPoint(0).X))
+            {
+                // Optionally register only 1 frame out of every n
+                _flipFlop = (_flipFlop + 1) % Ignore;
+                if (_flipFlop == 0)
+                {
+                    _video.Add(a.GetCoords());
+                }
+            }
+            // Update the debug window with Sequences information
+            //dtwTextOutput.Text = _dtw.RetrieveText();
+        }
+        #endregion
+
+        #region ConsoleManager
+        internal static class ConsoleManager
+        {
+            // http://msdn.microsoft.com/en-us/library/ms681944(VS.85).aspx
+            /// <summary>
+            /// Allocates a new console for the calling process.
+            /// </summary>
+            /// <returns>nonzero if the function succeeds; otherwise, zero.</returns>
+            /// <remarks>
+            /// A process can be associated with only one console,
+            /// so the function fails if the calling process already has a console.
+            /// </remarks>
+            [DllImport("kernel32.dll", SetLastError = true)]
+            internal static extern int AllocConsole();
+
+            // http://msdn.microsoft.com/en-us/library/ms683150(VS.85).aspx
+            /// <summary>
+            /// Detaches the calling process from its console.
+            /// </summary>
+            /// <returns>nonzero if the function succeeds; otherwise, zero.</returns>
+            /// <remarks>
+            /// If the calling process is not already attached to a console,
+            /// the error code returned is ERROR_INVALID_PARAMETER (87).
+            /// </remarks>
+            [DllImport("kernel32.dll", SetLastError = true)]
+            internal static extern int FreeConsole();
+        }
+        #endregion
+
+        private void ButtonAction_Clicked(object sender, RoutedEventArgs e)
+        {
+            const string STOP = "Stop ";
+            Button button = sender as Button;
+            if( null != button )
+            {
+                Console.WriteLine(button.Content + " is clicked");
+                string content = button.Content.ToString();
+                if (content.StartsWith(STOP))
+                {
+                    button.Content = content.Substring(STOP.Length);
+                    buttonAction1.IsEnabled = true;
+                    buttonAction2.IsEnabled = true;
+                    buttonAction3.IsEnabled = true;
+                }
+                else
+                {
+                    button.Content = STOP + content;
+                    buttonAction1.IsEnabled = false;
+                    buttonAction2.IsEnabled = false;
+                    buttonAction3.IsEnabled = false;
+                    button.IsEnabled = true;
+                }
+            }
+            
         }
     }
 }
