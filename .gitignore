@@ -1,0 +1,3 @@
+*.dll
+bin/Debug/Microsoft.Samples.Kinect.WpfViewers.dll
+*.pdb

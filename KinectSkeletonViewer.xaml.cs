@@ -383,6 +383,8 @@ namespace Microsoft.Samples.Kinect.WpfViewers
         private const int BufferSize = 32;
         private const int Ignore = 2;
         private bool _capturing;
+        private Button _stopButton;
+        private string _actionName;
         private DtwGestureRecognizer _dtw;
         private int _flipFlop = 0;
 
@@ -412,20 +414,29 @@ namespace Microsoft.Samples.Kinect.WpfViewers
             }
         }
 
+        private DateTime _lastTimeRecognizedAction = DateTime.MinValue; // last time a known action is recognized
+        private string _lastRecognizedAction = "";
         private void Skeleton2DdataCoordReady(object sender, Skeleton2DdataCoordEventArgs a)
         {
             int currentFrameCount = _video.Count;
+            double secondsSinceLastTime = (DateTime.Now - _lastTimeRecognizedAction).TotalSeconds;
+
             // We need a sensible number of frames before we start attempting to match gestures against remembered sequences
-            if (_video.Count > MinimumFrames && _capturing == false)
+            if ( _video.Count > MinimumFrames && _capturing == false)
             {
                 ////Debug.WriteLine("Reading and video.Count=" + video.Count);
                 string s = _dtw.Recognize(_video);
-                Console.WriteLine("Recognised as: " + s);
-                if (!s.Contains("__UNKNOWN"))
+                if (!s.Contains("__UNKNOWN"))   // known action is recognized
                 {
-                    // There was no match so reset the buffer
                     _video = new ArrayList();
+                    _lastTimeRecognizedAction = DateTime.Now;
+                    Console.WriteLine("Action Recognised: " + s + " after " + secondsSinceLastTime + " s");
                 }
+                else if (!s.Equals(_lastRecognizedAction))
+                {
+                    Console.WriteLine("Action Recognised: " + s);
+                }
+                _lastRecognizedAction = s;
             }
             // Ensures that we remember only the last x frames
             if (_video.Count > BufferSize)
@@ -433,8 +444,8 @@ namespace Microsoft.Samples.Kinect.WpfViewers
                 // If we are currently capturing and we reach the maximum buffer size then automatically store
                 if (_capturing)
                 {
-                   // TODO stop capturing and save the sample
-                   // DtwStoreClick(null, null);
+                    //stop capturing and save the sample
+                    ButtonAction_Clicked(_stopButton, null);
                 }
                 else
                 {
@@ -456,6 +467,50 @@ namespace Microsoft.Samples.Kinect.WpfViewers
             }
             // Update the debug window with Sequences information
             //dtwTextOutput.Text = _dtw.RetrieveText();
+        }
+
+        /*
+         * Handler of button clicks that controls recording sample actions
+         */
+        private void ButtonAction_Clicked(object sender, RoutedEventArgs e)
+        {
+            const string STOP = "Stop ";
+            Button button = sender as Button;
+            if (null != button)
+            {
+                string content = button.Content.ToString();
+                if (content.StartsWith(STOP))
+                {
+                    button.Content = content.Substring(STOP.Length);
+                    buttonAction1.IsEnabled = true;
+                    buttonAction2.IsEnabled = true;
+                    buttonAction3.IsEnabled = true;
+                    _capturing = false;         // end capturing mode
+                    DtwSaveSample();
+                    _actionName = null;
+                    _stopButton = null;
+                    Console.WriteLine("Recording " + button.Content + " ended");
+                }
+                else
+                {
+                    button.Content = STOP + content;
+                    _stopButton = button;       // stopButton to be triggered when video buffer is full
+                    buttonAction1.IsEnabled = false;
+                    buttonAction2.IsEnabled = false;
+                    buttonAction3.IsEnabled = false;
+                    button.IsEnabled = true;
+                    _video = new ArrayList();   // clear the _video buffer and start from the beginning
+                    _capturing = true;          // set capturing mode
+                    _actionName = content;
+                    Console.WriteLine("Recording " + _actionName + " started");
+                }
+            }
+        }
+
+        private void DtwSaveSample()
+        {
+            _dtw.AddOrUpdate(_video, _actionName);
+            _video = new ArrayList();
         }
         #endregion
 
@@ -487,32 +542,5 @@ namespace Microsoft.Samples.Kinect.WpfViewers
             internal static extern int FreeConsole();
         }
         #endregion
-
-        private void ButtonAction_Clicked(object sender, RoutedEventArgs e)
-        {
-            const string STOP = "Stop ";
-            Button button = sender as Button;
-            if( null != button )
-            {
-                Console.WriteLine(button.Content + " is clicked");
-                string content = button.Content.ToString();
-                if (content.StartsWith(STOP))
-                {
-                    button.Content = content.Substring(STOP.Length);
-                    buttonAction1.IsEnabled = true;
-                    buttonAction2.IsEnabled = true;
-                    buttonAction3.IsEnabled = true;
-                }
-                else
-                {
-                    button.Content = STOP + content;
-                    buttonAction1.IsEnabled = false;
-                    buttonAction2.IsEnabled = false;
-                    buttonAction3.IsEnabled = false;
-                    button.IsEnabled = true;
-                }
-            }
-            
-        }
     }
 }
